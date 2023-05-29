@@ -18,13 +18,17 @@ package controller
 
 import (
 	"context"
-
+	"fmt"
+	dappsv1 "github.com/PercyT/operator/tree/main/api/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	appsv1 "my.domain/guestbook/api/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	dappsv1 "github.com/"
-	appsv1 "my.domain/guestbook/api/v1"
+	"time"
 )
 
 // ApplicationReconciler reconciles a Application object
@@ -50,8 +54,35 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	_ = log.FromContext(ctx)
 
 	// TODO(user): your logic here
-	app := $dappsv1.Application()
-	if err := r.Get(ctx, request.)
+	app := &dappsv1.Application{}
+	if err := r.Get(ctx, req.NamespacedName, app); err != nil {
+		if errors.IsNotFound(err) {
+			l.Info("the Application is not found")
+			return ctrl.Result{}, nil
+		}
+		l.Error(err, "failed to get the Application")
+		return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
+	}
+
+	// create pods
+	for i := 0; i < int(app.Spec.Replicas); i++ {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-%d", app.Name, i),
+				Namespace: app.Namespace,
+				Labels:    app.Labels,
+			},
+			Spec: app.Spec.Template.Spec,
+		}
+
+		if err := r.Create(ctx, pod); err != nil {
+			l.Error(err, "failed to create Pod")
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
+		}
+		l.Info(fmt.Sprintf("the Pod (%s) has created", pod.Name))
+	}
+
+	l.Info("all pods has created")
 	return ctrl.Result{}, nil
 }
 
